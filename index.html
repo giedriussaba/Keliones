@@ -125,6 +125,7 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
     <span id="statLine">0 variantų</span>
     <span>valiuta: EUR</span>
     <span id="saveState"></span>
+    <span id="syncState"></span>
   </div>
 </header>
 
@@ -136,6 +137,7 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
 <div class="toolbar">
   <button id="btnAdd">+ Variantas</button>
   <button class="secondary" id="btnSave">Išsaugoti</button>
+  <button class="secondary" id="btnCloud">Debesis</button>
   <button class="secondary" id="btnImport">Importuoti JSON</button>
   <button class="secondary" id="btnExport">Eksportuoti</button>
   <select id="sortSel" aria-label="Rikiavimas">
@@ -167,6 +169,22 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
 </div>
 
 <main id="list"></main>
+
+<div class="modal-bg" id="cloudModal">
+  <div class="modal">
+    <h3>Sinchronizacija per GitHub</h3>
+    <p>Duomenys saugomi kaip <b>data.json</b> tavo repozitorijoje. Token'as saugomas tik šiame įrenginyje. Skaitymui token'o nereikia, rašymui – reikia.</p>
+    <div class="field-row"><label>Vartotojas</label><input type="text" id="syncOwner" placeholder="pvz. giedriussaba"></div>
+    <div class="field-row"><label>Repozitorija</label><input type="text" id="syncRepo" placeholder="pvz. Keliones"></div>
+    <div class="field-row"><label>Token</label><input type="password" id="syncToken" placeholder="github_pat_..."></div>
+    <div class="msg" id="cloudMsg"></div>
+    <div class="actions">
+      <button class="secondary" id="btnCloudClose">Uždaryti</button>
+      <button class="secondary" id="btnCloudPull">Parsisiųsti</button>
+      <button id="btnCloudPush">Siųsti</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-bg" id="exportModal">
   <div class="modal">
@@ -250,6 +268,66 @@ function storeLabel(){
   return'⚠ saugyklos nėra – duomenys tik šiai sesijai, naudok Eksportuoti';
 }
 
+/* ---------- GitHub sinchronizacija ---------- */
+const SYNCKEY=KEY+'-sync';
+let remoteSha=null, pushTimer=null;
+function syncCfg(){try{return JSON.parse(localStorage.getItem(SYNCKEY)||'{}');}catch(e){return{};}}
+function syncCfgSave(c){try{localStorage.setItem(SYNCKEY,JSON.stringify(c));}catch(e){}}
+function setSync(t,err){const el=document.getElementById('syncState');el.textContent=t;el.className=err?'err':'';}
+function b64enc(s){return btoa(unescape(encodeURIComponent(s)));}
+function b64dec(b){return decodeURIComponent(escape(atob(String(b).replace(/\n/g,''))));}
+function ghHeaders(cfg){const h={'Accept':'application/vnd.github+json'};if(cfg.token)h['Authorization']='Bearer '+cfg.token;return h;}
+function normalizeDb(){
+  if(!db.trips)db.trips=[];
+  if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
+  db.trips.forEach(t=>{
+    t.settings=Object.assign(defaultSettings(),t.settings||{});
+    (t.variants||[]).forEach(v=>{if(!v.airportNight)v.airportNight={enabled:false,value:null};if(v.checkedBag==null)v.checkedBag=false;});
+  });
+  state=db.trips.find(t=>t.id===db.activeId)||db.trips[0];
+  db.activeId=state.id;
+}
+async function cloudPull(){
+  const cfg=syncCfg();
+  if(!cfg.owner||!cfg.repo)throw new Error('nenurodyta repozitorija');
+  const res=await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data.json`,{headers:ghHeaders(cfg)});
+  if(res.status===404){remoteSha=null;throw new Error('debesyje dar nėra data.json – spausk Siųsti');}
+  if(!res.ok)throw new Error('GitHub '+res.status);
+  const j=await res.json();
+  remoteSha=j.sha;
+  const s=JSON.parse(b64dec(j.content));
+  if(!s.trips)throw new Error('data.json ne to formato');
+  db=s;
+  normalizeDb();
+  syncInputs();
+  render();
+  await save({push:false});
+  return 'parsisiųsta';
+}
+async function cloudPush(){
+  const cfg=syncCfg();
+  if(!cfg.owner||!cfg.repo)throw new Error('nenurodyta repozitorija');
+  if(!cfg.token)throw new Error('rašymui reikia token');
+  const body={message:'Appso duomenys '+new Date().toISOString().slice(0,16).replace('T',' '),content:b64enc(JSON.stringify(db))};
+  if(remoteSha)body.sha=remoteSha;
+  const res=await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data.json`,{method:'PUT',headers:Object.assign({'Content-Type':'application/json'},ghHeaders(cfg)),body:JSON.stringify(body)});
+  if(res.status===409||res.status===422){throw new Error('debesyje naujesnė versija – Debesis → Parsisiųsti');}
+  if(!res.ok)throw new Error('GitHub '+res.status+(res.status===401?' – blogas token':''));
+  const j=await res.json();
+  remoteSha=j.content.sha;
+  return 'išsiųsta';
+}
+function schedulePush(){
+  const cfg=syncCfg();
+  if(!cfg.token||!cfg.owner||!cfg.repo)return;
+  clearTimeout(pushTimer);
+  setSync('debesis: laukia…');
+  pushTimer=setTimeout(async()=>{
+    try{await cloudPush();setSync('✓ debesyje '+new Date().toTimeString().slice(0,5));}
+    catch(e){setSync('⚠ '+e.message,true);}
+  },2500);
+}
+
 async function load(){
   storeMode=await detectStore();
   try{const raw=await storeGet();if(raw){const s=JSON.parse(raw);
@@ -262,17 +340,17 @@ async function load(){
     }
   }}catch(e){}
   if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
-  state=db.trips.find(t=>t.id===db.activeId)||db.trips[0];
-  db.activeId=state.id;
-  db.trips.forEach(t=>{
-    t.settings=Object.assign(defaultSettings(),t.settings||{});
-    (t.variants||[]).forEach(v=>{if(!v.airportNight)v.airportNight={enabled:false,value:null};if(v.checkedBag==null)v.checkedBag=false;});
-  });
+  normalizeDb();
   syncInputs();
   render();
   const el=document.getElementById('saveState');
   el.textContent=storeLabel();
   el.className=storeMode==='none'?'err':'';
+  const cfg=syncCfg();
+  if(cfg.owner&&cfg.repo){
+    setSync('debesis: siunčiasi…');
+    cloudPull().then(m=>setSync('✓ debesis: '+m)).catch(e=>setSync('⚠ '+e.message,true));
+  }
 }
 function syncInputs(){
   document.getElementById('tripName').value=state.tripName||'';
@@ -287,14 +365,16 @@ function renderTripSel(){
   const sel=document.getElementById('tripSel');
   sel.innerHTML=db.trips.map(t=>`<option value="${t.id}" ${t.id===state.id?'selected':''}>${esc(t.tripName)}</option>`).join('');
 }
-async function save(){
+async function save(opts){
   state.tripName=document.getElementById('tripName').value;
   db.activeId=state.id;
   renderTripSel();
   const el=document.getElementById('saveState');
+  const doPush=!(opts&&opts.push===false);
   if(storeMode==='none'){
     el.textContent='⚠ saugyklos nėra – naudok Eksportuoti';
     el.className='err';
+    if(doPush)schedulePush();
     return false;
   }
   el.textContent='saugoma…';el.className='';
@@ -305,6 +385,7 @@ async function save(){
       if(ok){
         el.textContent='✓ išsaugota '+new Date().toTimeString().slice(0,5)+(storeMode==='local'?' (naršyklėje)':'');
         el.className='';
+        if(doPush)schedulePush();
         return true;
       }
       lastErr='tuščias atsakymas';
@@ -781,6 +862,41 @@ document.getElementById('btnImpOk').onclick=()=>{
     setTimeout(()=>modal.classList.remove('show'),900);
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
 };
+const cloudModal=document.getElementById('cloudModal');
+document.getElementById('btnCloud').onclick=()=>{
+  const cfg=syncCfg();
+  document.getElementById('syncOwner').value=cfg.owner||'';
+  document.getElementById('syncRepo').value=cfg.repo||'';
+  document.getElementById('syncToken').value=cfg.token||'';
+  document.getElementById('cloudMsg').className='msg';
+  cloudModal.classList.add('show');
+};
+function cloudCfgFromForm(){
+  const cfg={
+    owner:document.getElementById('syncOwner').value.trim(),
+    repo:document.getElementById('syncRepo').value.trim(),
+    token:document.getElementById('syncToken').value.trim()
+  };
+  syncCfgSave(cfg);
+  return cfg;
+}
+document.getElementById('btnCloudClose').onclick=()=>{cloudCfgFromForm();cloudModal.classList.remove('show');};
+cloudModal.onclick=e=>{if(e.target===cloudModal){cloudCfgFromForm();cloudModal.classList.remove('show');}};
+document.getElementById('btnCloudPull').onclick=async()=>{
+  cloudCfgFromForm();
+  const msg=document.getElementById('cloudMsg');
+  msg.textContent='siunčiasi…';msg.className='msg ok';
+  try{const m=await cloudPull();msg.textContent='✓ '+m;msg.className='msg ok';setSync('✓ debesis: '+m);}
+  catch(e){msg.textContent='⚠ '+e.message;msg.className='msg err';}
+};
+document.getElementById('btnCloudPush').onclick=async()=>{
+  cloudCfgFromForm();
+  const msg=document.getElementById('cloudMsg');
+  msg.textContent='siunčiama…';msg.className='msg ok';
+  try{const m=await cloudPush();msg.textContent='✓ '+m;msg.className='msg ok';setSync('✓ debesyje '+new Date().toTimeString().slice(0,5));}
+  catch(e){msg.textContent='⚠ '+e.message;msg.className='msg err';}
+};
+
 const expModal=document.getElementById('exportModal');
 document.getElementById('btnExport').onclick=()=>{
   document.getElementById('exportTxt').value=JSON.stringify(db);
