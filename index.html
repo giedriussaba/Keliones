@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kelionės variantų palyginimas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F7F4;
+  --card:#FFFFFF;
+  --ink:#16233A;
+  --ink-soft:#5A6478;
+  --line:#DDE1DA;
+  --ok:#147D71;
+  --ok-bg:#E4F1EE;
+  --miss:#D9822B;
+  --miss-bg:#FBF0E2;
+  --est:#8058A5;
+  --est-bg:#F0EAF7;
+  --risk:#B4452F;
+  --risk-bg:#F9E8E3;
+  --best:#147D71;
+  --danger:#B4452F;
+  --radius:10px;
+  --mono:'IBM Plex Mono',monospace;
+  --disp:'Space Grotesk',sans-serif;
+  --body:'Inter',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:14px;line-height:1.45;padding-bottom:80px}
+header{padding:20px 16px 12px;max-width:960px;margin:0 auto}
+header h1{font-family:var(--disp);font-size:20px;font-weight:700;letter-spacing:-0.01em}
+header h1 input{font:inherit;color:inherit;background:transparent;border:none;border-bottom:1px dashed transparent;width:100%;max-width:420px}
+header h1 input:focus{outline:none;border-bottom-color:var(--line)}
+.meta-row{display:flex;gap:14px;margin-top:6px;font-size:12px;color:var(--ink-soft);font-family:var(--mono);flex-wrap:wrap;align-items:center}
+#saveState.err{color:var(--danger)}
+.toolbar{max-width:960px;margin:0 auto;padding:0 16px 10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font-family:var(--disp);font-weight:600;font-size:13px;border:1.5px solid var(--ink);background:var(--ink);color:#fff;padding:8px 14px;border-radius:var(--radius);cursor:pointer}
+button.secondary{background:transparent;color:var(--ink)}
+button.small{padding:5px 10px;font-size:12px}
+button.danger{border-color:var(--danger);color:var(--danger);background:transparent}
+button:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+select{font-family:var(--disp);font-size:13px;font-weight:600;border:1.5px solid var(--line);border-radius:var(--radius);padding:8px 10px;background:var(--card);color:var(--ink)}
+.settings{max-width:960px;margin:0 auto;padding:0 16px 8px;font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.settings input{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:3px 5px;background:var(--card);color:var(--ink);width:74px}
+main{max-width:960px;margin:0 auto;padding:0 16px}
+.empty{border:1.5px dashed var(--line);border-radius:var(--radius);padding:32px 20px;text-align:center;color:var(--ink-soft)}
+.empty b{color:var(--ink)}
+/* variant card */
+.vcard{background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.vcard.best{border-color:var(--best)}
+.vhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:12px 14px 4px;cursor:pointer}
+.vname{font-family:var(--disp);font-weight:600;font-size:15px}
+.vtotal{font-family:var(--mono);font-weight:600;font-size:16px;white-space:nowrap}
+.vtotal .partial{color:var(--miss);font-size:11px;font-weight:500}
+.best-tag{font-family:var(--mono);font-size:10px;color:var(--best);background:var(--ok-bg);padding:2px 6px;border-radius:4px;margin-left:6px;vertical-align:middle}
+/* day bar */
+.daybar-wrap{padding:6px 14px 2px;cursor:pointer}
+.daybar-lbl{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-bottom:4px}
+.daybar-lbl b{color:var(--ink);font-weight:600}
+.daybar{display:flex;gap:2px;height:16px}
+.dseg{flex:1;border-radius:3px;background:var(--ok);opacity:.85;min-width:8px;position:relative;overflow:hidden}
+.dseg.air{background:var(--est);opacity:.95}
+.dseg span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:8.5px;color:#fff;font-weight:600;z-index:2}
+.dseg span.dark{color:var(--ink)}
+.dmark{position:absolute;top:0;bottom:0;width:2px;background:#D0342C;z-index:3}
+.dmark.car{background:repeating-linear-gradient(180deg,var(--ink) 0 3px,transparent 3px 5px);z-index:4}
+/* risk badges */
+.risks{padding:6px 14px 4px;display:flex;gap:6px;flex-wrap:wrap;cursor:pointer}
+.rbadge{font-family:var(--mono);font-size:10.5px;padding:3px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:4px}
+.rbadge.warn{background:var(--risk-bg);color:var(--risk)}
+.rbadge.ok{background:var(--ok-bg);color:var(--ok)}
+.rbadge.info{background:var(--est-bg);color:var(--est)}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:1px;background:var(--line);border-top:1px solid var(--line);margin-top:8px;cursor:pointer}
+.cell{background:var(--card);padding:8px 10px;min-height:52px}
+.cell .lbl{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);font-family:var(--disp);font-weight:600}
+.cell .val{font-family:var(--mono);font-size:13px;font-weight:500;margin-top:2px}
+.cell .sub{font-size:11px;color:var(--ink-soft);font-family:var(--mono)}
+.slot-empty{color:var(--miss);border-bottom:1px dashed var(--miss);display:inline-block;min-width:36px}
+.est-mark{color:var(--est);font-weight:600}
+/* detail */
+.vdetail{border-top:1.5px solid var(--line);padding:14px;display:none;background:#FBFCFA}
+.vcard.open .vdetail{display:block}
+.dsec{margin-bottom:16px}
+.dsec h4{font-family:var(--disp);font-size:12px;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink-soft);margin-bottom:8px}
+.field-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:center}
+.field-row label{font-size:12px;color:var(--ink-soft);min-width:110px}
+.field-row input,.field-row textarea{font-family:var(--mono);font-size:13px;border:1.5px solid var(--line);border-radius:6px;padding:6px 8px;background:#fff;color:var(--ink);flex:1;min-width:120px}
+.field-row input:focus,.field-row textarea:focus{outline:none;border-color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:20px;background:var(--ok-bg);color:var(--ok);white-space:nowrap}
+.chip.miss{background:var(--miss-bg);color:var(--miss)}
+.chip.est{background:var(--est-bg);color:var(--est)}
+.hist{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:4px;padding-left:8px;border-left:2px solid var(--line)}
+.hist div{margin-bottom:2px}
+.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.logi-note{font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.5}
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(22,35,58,0.5);display:none;align-items:flex-end;justify-content:center;z-index:50}
+.modal-bg.show{display:flex}
+.modal{background:var(--card);border-radius:14px 14px 0 0;width:100%;max-width:640px;max-height:85vh;overflow-y:auto;padding:18px 16px}
+.modal h3{font-family:var(--disp);font-size:16px;margin-bottom:8px}
+.modal p{font-size:12.5px;color:var(--ink-soft);margin-bottom:10px}
+.modal textarea{width:100%;min-height:180px;font-family:var(--mono);font-size:12px;border:1.5px solid var(--line);border-radius:8px;padding:10px;color:var(--ink)}
+.modal textarea:focus{outline:none;border-color:var(--ink)}
+.modal .actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.msg{font-family:var(--mono);font-size:12px;margin-top:8px;display:none}
+.msg.ok{color:var(--ok);display:block}
+.msg.err{color:var(--danger);display:block}
+.legend{max-width:960px;margin:0 auto;padding:6px 16px 12px;font-size:11px;color:var(--ink-soft);font-family:var(--mono);display:flex;gap:14px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+@media(min-width:700px){
+  .modal-bg{align-items:center}
+  .modal{border-radius:14px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><input id="tripName" value="Kelionės variantai" aria-label="Kelionės pavadinimas"></h1>
+  <div class="meta-row">
+    <span id="statLine">0 variantų</span>
+    <span>valiuta: EUR</span>
+    <span id="saveState"></span>
+  </div>
+</header>
+
+<div class="toolbar">
+  <select id="tripSel" aria-label="Kelionė" style="max-width:220px"></select>
+  <button class="secondary small" id="btnNewTrip">+ Kelionė</button>
+  <button class="danger small" id="btnDelTrip">Ištrinti kelionę</button>
+</div>
+<div class="toolbar">
+  <button id="btnAdd">+ Variantas</button>
+  <button class="secondary" id="btnSave">Išsaugoti</button>
+  <button class="secondary" id="btnImport">Importuoti JSON</button>
+  <button class="secondary" id="btnExport">Eksportuoti</button>
+  <select id="sortSel" aria-label="Rikiavimas">
+    <option value="total">Rikiuoti: pagal sumą</option>
+    <option value="time">pagal laiką šalyje</option>
+    <option value="date">pagal išvykimo datą</option>
+    <option value="name">pagal pavadinimą</option>
+  </select>
+</div>
+
+<div class="settings">
+  <span>Auto nuoma:</span>
+  <input type="time" id="rentOpen" value="08:00"> –
+  <input type="time" id="rentClose" value="23:00">
+  <span>· grąžinimas prieš skrydį:</span>
+  <input type="number" id="retBuf" value="2" min="0" max="5" step="0.5" style="width:52px"> val.
+  <span>· Kambarys: nuo</span>
+  <input type="time" id="checkIn" value="15:00">
+  <span>iki</span>
+  <input type="time" id="checkOut" value="10:00">
+</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--miss)"></span> trūksta duomenų</span>
+  <span><span class="est-mark">~</span> spėjama</span>
+  <span><span class="dot" style="background:var(--risk)"></span> nuomos rizika</span>
+  <span><span class="dot" style="background:var(--est)"></span> naktis oro uoste</span>
+  <span>┆ auto paėmimas/grąžinimas</span>
+</div>
+
+<main id="list"></main>
+
+<div class="modal-bg" id="exportModal">
+  <div class="modal">
+    <h3>Eksportuoti duomenis</h3>
+    <p>Nukopijuok šį JSON ir išsisaugok (Notes, el. paštu sau, arba įklijuok Claude pokalbyje). Atkūrimui – įklijuok per „Importuoti JSON".</p>
+    <textarea id="exportTxt" readonly></textarea>
+    <div class="msg" id="exportMsg"></div>
+    <div class="actions">
+      <button class="secondary" id="btnExpClose">Uždaryti</button>
+      <button id="btnExpCopy">Kopijuoti</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="importModal">
+  <div class="modal">
+    <h3>Importuoti duomenis (JSON)</h3>
+    <p>Įklijuok JSON bloką iš pokalbio su Claude. Sutampantis pavadinimas = atnaujinimas (senos kainos lieka istorijoje).</p>
+    <textarea id="importTxt" placeholder='{"variants":[{"name":"...", ...}]}'></textarea>
+    <div class="msg" id="importMsg"></div>
+    <div class="actions">
+      <button class="secondary" id="btnImpCancel">Atšaukti</button>
+      <button id="btnImpOk">Importuoti</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY='trip-compare-v1';
+let db={trips:[],activeId:null};
+let state=null; // aktyvi kelionė
+let openIds=new Set();
+
+function defaultSettings(){return{rentOpen:'08:00',rentClose:'23:00',retBuf:2,checkIn:'15:00',checkOut:'10:00'}}
+function newTrip(name){return{id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),tripName:name||'Nauja kelionė',variants:[],settings:defaultSettings()}}
+
+const fmt=n=>n==null||n===''?null:Number(n).toLocaleString('lt-LT',{maximumFractionDigits:0});
+const today=()=>new Date().toISOString().slice(0,10);
+const uid=()=>'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function newMoney(){return{value:null,estimated:false,source:'',capturedAt:'',history:[]}}
+function newVariant(name){return{id:uid(),name:name||'Naujas variantas',
+  outbound:{date:'',dep:'',arr:'',from:'',to:'',via:'',airline:''},
+  inbound:{date:'',dep:'',arr:'',from:'',to:'',via:'',airline:''},
+  nights:null,lodgingName:'',
+  flightPrice:newMoney(),lodging:newMoney(),car:newMoney(),extras:newMoney(),
+  airportNight:{enabled:false,value:null},
+  checkedBag:false,
+  notes:'',source:'',capturedAt:today()}}
+
+/* ---------- storage adapter: Claude -> localStorage -> none ---------- */
+let storeMode='none';
+async function detectStore(){
+  try{
+    if(window.storage&&typeof window.storage.set==='function'){
+      await window.storage.set(KEY+'-t','1');
+      const r=await window.storage.get(KEY+'-t');
+      if(r&&r.value==='1')return'claude';
+    }
+  }catch(e){}
+  try{
+    localStorage.setItem(KEY+'-t','1');
+    if(localStorage.getItem(KEY+'-t')==='1'){localStorage.removeItem(KEY+'-t');return'local';}
+  }catch(e){}
+  return'none';
+}
+async function storeGet(){
+  if(storeMode==='claude'){try{const r=await window.storage.get(KEY);return r&&r.value?r.value:null;}catch(e){return null;}}
+  if(storeMode==='local'){try{return localStorage.getItem(KEY);}catch(e){return null;}}
+  return null;
+}
+async function storeSet(str){
+  if(storeMode==='claude'){await window.storage.set(KEY,str);return true;}
+  if(storeMode==='local'){localStorage.setItem(KEY,str);return true;}
+  return false;
+}
+function storeLabel(){
+  if(storeMode==='claude')return'✓ saugykla: Claude';
+  if(storeMode==='local')return'✓ saugykla: naršyklė';
+  return'⚠ saugyklos nėra – duomenys tik šiai sesijai, naudok Eksportuoti';
+}
+
+async function load(){
+  storeMode=await detectStore();
+  try{const raw=await storeGet();if(raw){const s=JSON.parse(raw);
+    if(s.trips){db=s;}
+    else if(s.variants){ // sena vieno maršruto struktūra -> migruojam
+      const t=newTrip(s.tripName||'Kelionės variantai');
+      t.variants=s.variants;
+      t.settings=Object.assign(defaultSettings(),s.settings||{});
+      db={trips:[t],activeId:t.id};
+    }
+  }}catch(e){}
+  if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
+  state=db.trips.find(t=>t.id===db.activeId)||db.trips[0];
+  db.activeId=state.id;
+  db.trips.forEach(t=>{
+    t.settings=Object.assign(defaultSettings(),t.settings||{});
+    (t.variants||[]).forEach(v=>{if(!v.airportNight)v.airportNight={enabled:false,value:null};if(v.checkedBag==null)v.checkedBag=false;});
+  });
+  syncInputs();
+  render();
+  const el=document.getElementById('saveState');
+  el.textContent=storeLabel();
+  el.className=storeMode==='none'?'err':'';
+}
+function syncInputs(){
+  document.getElementById('tripName').value=state.tripName||'';
+  document.getElementById('rentOpen').value=state.settings.rentOpen;
+  document.getElementById('rentClose').value=state.settings.rentClose;
+  document.getElementById('retBuf').value=state.settings.retBuf;
+  document.getElementById('checkIn').value=state.settings.checkIn;
+  document.getElementById('checkOut').value=state.settings.checkOut;
+  renderTripSel();
+}
+function renderTripSel(){
+  const sel=document.getElementById('tripSel');
+  sel.innerHTML=db.trips.map(t=>`<option value="${t.id}" ${t.id===state.id?'selected':''}>${esc(t.tripName)}</option>`).join('');
+}
+async function save(){
+  state.tripName=document.getElementById('tripName').value;
+  db.activeId=state.id;
+  renderTripSel();
+  const el=document.getElementById('saveState');
+  if(storeMode==='none'){
+    el.textContent='⚠ saugyklos nėra – naudok Eksportuoti';
+    el.className='err';
+    return false;
+  }
+  el.textContent='saugoma…';el.className='';
+  let lastErr='';
+  for(let i=0;i<3;i++){
+    try{
+      const ok=await storeSet(JSON.stringify(db));
+      if(ok){
+        el.textContent='✓ išsaugota '+new Date().toTimeString().slice(0,5)+(storeMode==='local'?' (naršyklėje)':'');
+        el.className='';
+        return true;
+      }
+      lastErr='tuščias atsakymas';
+    }catch(e){lastErr=(e&&e.message)?e.message:String(e);}
+    await new Promise(res=>setTimeout(res,500*(i+1)));
+  }
+  el.textContent='⚠ neišsaugota ('+lastErr.slice(0,60)+') – naudok Eksportuoti';
+  el.className='err';
+  return false;
+}
+
+/* ---------- time logic ---------- */
+function toMin(t){if(!t)return null;const[a,b]=t.split(':').map(Number);return a*60+b;}
+function fmtDur(mins){
+  if(mins==null||isNaN(mins)||mins<=0)return null;
+  const d=Math.floor(mins/1440),h=Math.round((mins%1440)/60);
+  if(d>0)return d+' p. '+h+' val.';
+  return h+' val.';
+}
+// arrival datetime at destination (handles overnight flight: arr < dep => +1 day)
+function arrDT(v){
+  const l=v.outbound;
+  if(!l.date||!l.arr)return null;
+  let d=new Date(l.date+'T'+l.arr);
+  if(l.dep&&toMin(l.arr)<toMin(l.dep))d.setDate(d.getDate()+1);
+  return isNaN(d)?null:d;
+}
+function depDT(v){
+  const l=v.inbound;
+  if(!l.date||!l.dep)return null;
+  const d=new Date(l.date+'T'+l.dep);
+  return isNaN(d)?null:d;
+}
+function timeInCountry(v){
+  const a=arrDT(v),d=depDT(v);
+  if(!a||!d)return null;
+  return (d-a)/60000; // minutes
+}
+// risk analysis vs rental hours
+function risks(v){
+  const out=[];
+  const open=toMin(state.settings.rentOpen),close=toMin(state.settings.rentClose);
+  const a=arrDT(v),r=readyDT(v);
+  if(a&&r){
+    const rm=r.getHours()*60+r.getMinutes();
+    const late=rm>close, early=rm<open;
+    if(late||early){
+      if(v.airportNight&&v.airportNight.enabled){
+        out.push({t:'ok',txt:'Naktis oro uoste'+(v.airportNight.value!=null?' +'+fmt(v.airportNight.value)+' €':'')+' → auto nuo '+state.settings.rentOpen});
+      }else{
+        out.push({t:'warn',txt:'Atvykimas '+fmtT(a)+' +'+bagDelay(v)+' min ('+(v.checkedBag?'su bagažu':'be bagažo')+') → auto '+fmtT(r)+' – nuoma uždaryta ('+state.settings.rentOpen+'–'+state.settings.rentClose+')'});
+      }
+    }
+  }
+  const d=depDT(v);
+  if(d){
+    const buf=Number(state.settings.retBuf||2)*60;
+    const retM=d.getHours()*60+d.getMinutes()-buf;
+    if(retM<open){
+      out.push({t:'warn',txt:'Išvykimas '+v.inbound.dep+' – auto grąžinimas ~'+fmtHM(retM)+', nuoma dar uždaryta'});
+    }
+  }
+  if(v.airportNight&&v.airportNight.enabled&&!out.some(r=>r.t==='ok')){
+    out.push({t:'info',txt:'Naktis oro uoste'+(v.airportNight.value!=null?' +'+fmt(v.airportNight.value)+' €':'')});
+  }
+  out.push({t:'info',txt:v.checkedBag?'Su registruotu bagažu (auto +60 min)':'Be registruoto bagažo (auto +30 min)'});
+  return out;
+}
+function fmtHM(m){if(m<0)m+=1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(Math.round(m%60)).padStart(2,'0');}
+function fmtT(d){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+/* laikas nuo nusileidimo iki pasiruošimo imti auto: 60 min su registruotu bagažu, 30 min be */
+function bagDelay(v){return v.checkedBag?60:30;}
+function readyDT(v){const a=arrDT(v);if(!a)return null;return new Date(a.getTime()+bagDelay(v)*60000);}
+/* auto nuoma: paėmimas ir grąžinimas */
+function carRental(v){
+  const r=readyDT(v),d=depDT(v);
+  if(!r||!d)return null;
+  const open=toMin(state.settings.rentOpen),close=toMin(state.settings.rentClose);
+  const rm=r.getHours()*60+r.getMinutes();
+  let pickup=new Date(r);
+  // jei pasiruošus imti auto nuoma nedirba (arba naktis oro uoste) – auto imamas kitą rytą nuo atidarymo
+  if(rm>close||rm<open||(v.airportNight&&v.airportNight.enabled)){
+    if(rm>close)pickup.setDate(pickup.getDate()+1);
+    pickup.setHours(Math.floor(open/60),open%60,0,0);
+    if(pickup<r)pickup.setDate(pickup.getDate()+1);
+  }
+  const buf=Number(state.settings.retBuf||2)*60;
+  let ret=new Date(d.getTime()-buf*60000);
+  if(ret<=pickup)return null;
+  const mins=(ret-pickup)/60000;
+  return{pickup,ret,mins,billed:Math.ceil(mins/1440)};
+}
+
+function totalOf(v){
+  let sum=0,needed=0,est=false;
+  [['flightPrice',true],['lodging',true],['car',true],['extras',false]].forEach(([k,req])=>{
+    const m=v[k];
+    if(m.value!=null&&m.value!==''){sum+=Number(m.value);if(m.estimated)est=true;}
+    else if(req)needed++;
+  });
+  if(v.airportNight&&v.airportNight.enabled){
+    if(v.airportNight.value!=null&&v.airportNight.value!=='')sum+=Number(v.airportNight.value);
+    else needed++;
+  }
+  return{sum,complete:needed===0,est};
+}
+
+function moneyCell(v,key,lbl,extraSub){
+  const m=v[key];
+  let val;
+  if(m.value==null||m.value===''){val='<span class="slot-empty">&nbsp;</span>';}
+  else{val=(m.estimated?'<span class="est-mark">~</span>':'')+fmt(m.value)+' €';}
+  const sub=m.capturedAt?`<div class="sub">${m.capturedAt}</div>`:'';
+  const extra=extraSub?`<div class="sub">${extraSub}</div>`:'';
+  return `<div class="cell"><div class="lbl">${lbl}</div><div class="val">${val}</div>${extra}${sub}</div>`;
+}
+function legStr(l){
+  if(!l.date&&!l.dep&&!l.from)return null;
+  const route=[l.from,l.via,l.to].filter(Boolean).join('–');
+  const t=[l.dep,l.arr].filter(Boolean).join('→');
+  return {date:l.date||'?',route,t};
+}
+
+/* day bar: one segment per calendar day in country; first = airport night (violet); partial arrival/departure days shown as-is */
+function dayBarHtml(v){
+  const mins=timeInCountry(v);
+  if(mins==null)return'';
+  const a=arrDT(v),d=depDT(v);
+  const days=[];
+  let cur=new Date(a.getFullYear(),a.getMonth(),a.getDate());
+  const end=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+  let i=0;
+  while(cur<=end&&i<40){
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate()+1);i++;
+  }
+  const an=v.airportNight&&v.airportNight.enabled;
+  const pct=t=>((t.getHours()*60+t.getMinutes())/1440*100);
+  const yel='#E8C15A', grn='var(--ok)';
+  const cr=carRental(v);
+  const sameDay=(x,day)=>x&&x.getFullYear()===day.getFullYear()&&x.getMonth()===day.getMonth()&&x.getDate()===day.getDate();
+  const segs=days.map((day,idx)=>{
+    const first=idx===0, last=idx===days.length-1;
+    let cls='dseg', style='', label=String(day.getDate()), dark=false, marks='';
+    if(cr){
+      if(sameDay(cr.pickup,day))marks+=`<div class="dmark car" style="left:${pct(cr.pickup).toFixed(1)}%" title="Auto paėmimas ${fmtT(cr.pickup)}"></div>`;
+      if(sameDay(cr.ret,day))marks+=`<div class="dmark car" style="left:${pct(cr.ret).toFixed(1)}%" title="Auto grąžinimas ${fmtT(cr.ret)}"></div>`;
+    }
+    if(first&&an){
+      cls+=' air'; label='OU';
+      const p=pct(a).toFixed(1);
+      marks+=`<div class="dmark" style="left:${p}%"></div>`;
+    }else if(first&&last){
+      // atvykimas ir išvykimas tą pačią dieną
+      const p=pct(a).toFixed(1), q=pct(d).toFixed(1);
+      style=`background:linear-gradient(90deg,${yel} 0%,${yel} ${p}%,${grn} ${p}%,${grn} ${q}%,${yel} ${q}%,${yel} 100%)`;
+      marks+=`<div class="dmark" style="left:${p}%"></div><div class="dmark" style="left:${q}%"></div>`;
+      label=fmtT(a)+'→'+fmtT(d); dark=true;
+    }else if(first){
+      // diena "ištempta" į 24 val.: geltona iki atvykimo valandos, raudona linija, toliau žalia
+      const p=pct(a).toFixed(1);
+      style=`background:linear-gradient(90deg,${yel} 0%,${yel} ${p}%,${grn} ${p}%,${grn} 100%)`;
+      marks+=`<div class="dmark" style="left:${p}%"></div>`;
+      label=fmtT(a); dark=Number(p)>55;
+    }else if(last){
+      // išvykimo diena: žalia iki išvykimo valandos, raudona linija, toliau geltona
+      const q=pct(d).toFixed(1);
+      style=`background:linear-gradient(90deg,${grn} 0%,${grn} ${q}%,${yel} ${q}%,${yel} 100%)`;
+      marks+=`<div class="dmark" style="left:${q}%"></div>`;
+      label=fmtT(d); dark=Number(q)<45;
+    }
+    return `<div class="${cls}" style="${style}" title="${day.toISOString().slice(0,10)}">${marks}<span class="${dark?'dark':''}">${label}</span></div>`;
+  }).join('');
+  const anNote=an?' (1-a naktis oro uoste)':'';
+  const carNote=cr?` · auto: <b>${cr.billed} ${cr.billed===1?'para':(cr.billed<10?'paros':'parų')}</b>`:'';
+  return `<div class="daybar-wrap" data-toggle="${v.id}">
+    <div class="daybar-lbl">Laikas šalyje: <b>${fmtDur(mins)}</b> · ${days.length} kalend. d.${anNote}${carNote}</div>
+    <div class="daybar">${segs}</div>
+  </div>`;
+}
+
+function render(){
+  const list=document.getElementById('list');
+  const vs=[...state.variants];
+  const sort=document.getElementById('sortSel').value;
+  const t=v=>totalOf(v);
+  if(sort==='total')vs.sort((a,b)=>{const ta=t(a),tb=t(b);if(ta.complete!==tb.complete)return ta.complete?-1:1;return ta.sum-tb.sum;});
+  if(sort==='time')vs.sort((a,b)=>(timeInCountry(b)||0)-(timeInCountry(a)||0));
+  if(sort==='date')vs.sort((a,b)=>(a.outbound.date||'9999').localeCompare(b.outbound.date||'9999'));
+  if(sort==='name')vs.sort((a,b)=>a.name.localeCompare(b.name,'lt'));
+
+  let bestId=null,bestSum=Infinity;
+  vs.forEach(v=>{const tv=totalOf(v);if(tv.complete&&tv.sum<bestSum){bestSum=tv.sum;bestId=v.id;}});
+
+  document.getElementById('statLine').textContent=vs.length+(vs.length===1?' variantas':' variantai(-ų)');
+
+  if(!vs.length){list.innerHTML='<div class="empty">Kol kas tuščia.<br><br>Kelk screenshotus <b>pokalbyje su Claude</b> – gausi JSON bloką,<br>tada spausk <b>Importuoti JSON</b>. Arba pridėk variantą ranka.</div>';return;}
+
+  list.innerHTML=vs.map(v=>{
+    const tv=totalOf(v);
+    const ob=legStr(v.outbound),ib=legStr(v.inbound);
+    const totalHtml=tv.complete
+      ?(tv.est?'<span class="est-mark">~</span>':'')+fmt(tv.sum)+' €'
+      :(tv.sum>0?fmt(tv.sum)+' €+ <span class="partial">nepilna</span>':'<span class="slot-empty">&nbsp;</span>');
+    const rk=risks(v);
+    const cr=carRental(v);
+    const carSub=cr?fmtT(cr.pickup)+'→'+fmtT(cr.ret)+' ('+cr.billed+' p.)':('paėmimas +'+bagDelay(v)+' min, grąž. –'+state.settings.retBuf+' val.');
+    const riskHtml=rk.length?`<div class="risks" data-toggle="${v.id}">${rk.map(r=>`<span class="rbadge ${r.t}">${r.t==='warn'?'⚠ ':''}${esc(r.txt)}</span>`).join('')}</div>`:'';
+    return `<div class="vcard ${openIds.has(v.id)?'open':''} ${v.id===bestId?'best':''}" data-id="${v.id}">
+      <div class="vhead" data-toggle="${v.id}">
+        <div class="vname">${esc(v.name)}${v.id===bestId?'<span class="best-tag">PIGIAUSIAS</span>':''}</div>
+        <div class="vtotal">${totalHtml}</div>
+      </div>
+      ${dayBarHtml(v)}
+      ${riskHtml}
+      <div class="vgrid" data-toggle="${v.id}">
+        <div class="cell"><div class="lbl">Išvykimas</div><div class="val">${ob?ob.date:'<span class="slot-empty">&nbsp;</span>'}</div><div class="sub">${ob?[ob.route,ob.t].filter(Boolean).join(' '):''}</div></div>
+        <div class="cell"><div class="lbl">Grįžimas</div><div class="val">${ib?ib.date:'<span class="slot-empty">&nbsp;</span>'}</div><div class="sub">${ib?[ib.route,ib.t].filter(Boolean).join(' '):''}</div></div>
+        <div class="cell"><div class="lbl">Naktys</div><div class="val">${v.nights!=null&&v.nights!==''?v.nights:'<span class="slot-empty">&nbsp;</span>'}</div><div class="sub">įsireg. ${state.settings.checkIn} · išsireg. ${state.settings.checkOut}</div>${v.airportNight&&v.airportNight.enabled?'<div class="sub" style="color:var(--est)">+1 oro uoste</div>':''}</div>
+        ${moneyCell(v,'flightPrice','Skrydžiai')}
+        ${moneyCell(v,'lodging','Nakvynė')}
+        ${moneyCell(v,'car','Auto',carSub)}
+      </div>
+      <div class="vdetail">${detailHtml(v)}</div>
+    </div>`;
+  }).join('');
+
+  bindDetail();
+}
+
+function provChip(m){
+  if(m.value==null||m.value==='')return'<span class="chip miss">nėra duomenų</span>';
+  let c=m.estimated?'est':'';
+  let txt=(m.estimated?'spėjama':'fiksuota')+(m.capturedAt?' '+m.capturedAt:'')+(m.source?' · '+esc(m.source):'');
+  return `<span class="chip ${c}">${txt}</span>`;
+}
+function histHtml(m){
+  if(!m.history||!m.history.length)return'';
+  return '<div class="hist">'+m.history.slice().reverse().map(h=>`<div>${h.capturedAt||'?'} – ${fmt(h.value)} €${h.source?' ('+esc(h.source)+')':''}</div>`).join('')+'</div>';
+}
+function moneyEdit(v,key,label){
+  const m=v[key];
+  return `<div class="field-row">
+    <label>${label}</label>
+    <input type="number" step="1" data-f="${key}.value" value="${m.value??''}" placeholder="€">
+    <input type="text" data-f="${key}.source" value="${esc(m.source)}" placeholder="šaltinis" style="max-width:130px">
+    <label style="min-width:auto;display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" data-f="${key}.estimated" ${m.estimated?'checked':''} style="min-width:auto;flex:none">spėjama</label>
+    ${provChip(m)}
+  </div>${histHtml(m)}`;
+}
+function legEdit(v,key,label){
+  const l=v[key];
+  return `<div class="field-row"><label>${label}</label>
+    <input type="date" data-f="${key}.date" value="${l.date}" style="max-width:150px">
+    <input type="text" data-f="${key}.from" value="${esc(l.from)}" placeholder="iš" style="max-width:70px">
+    <input type="text" data-f="${key}.via" value="${esc(l.via)}" placeholder="per" style="max-width:70px">
+    <input type="text" data-f="${key}.to" value="${esc(l.to)}" placeholder="į" style="max-width:70px">
+    <input type="time" data-f="${key}.dep" value="${l.dep}" style="max-width:100px">
+    <input type="time" data-f="${key}.arr" value="${l.arr}" style="max-width:100px">
+    <input type="text" data-f="${key}.airline" value="${esc(l.airline)}" placeholder="aviakompanija" style="max-width:130px">
+  </div>`;
+}
+
+function logisticsHtml(v){
+  const a=arrDT(v),d=depDT(v);
+  let lines=[];
+  if(a)lines.push('Atvykimas vietoje: '+a.toISOString().slice(0,10)+' '+String(a.getHours()).padStart(2,'0')+':'+String(a.getMinutes()).padStart(2,'0')+' → pasiruošęs imti auto '+fmtT(readyDT(v))+' ('+(v.checkedBag?'su bagažu +60 min':'be bagažo +30 min')+')');
+  if(d)lines.push('Išvykimo skrydis: '+v.inbound.date+' '+v.inbound.dep+' (auto grąžinti ~'+fmtHM(toMin(v.inbound.dep)-Number(state.settings.retBuf)*60)+')');
+  const mins=timeInCountry(v);
+  if(mins)lines.push('Realus laikas šalyje: '+fmtDur(mins));
+  const cr=carRental(v);
+  if(cr)lines.push('Auto nuoma: paėmimas '+cr.pickup.toISOString().slice(0,10)+' '+fmtT(cr.pickup)+' → grąžinimas '+cr.ret.toISOString().slice(0,10)+' '+fmtT(cr.ret)+' = '+fmtDur(cr.mins)+' → apmokestinama '+cr.billed+' parų');
+  // kambario langas
+  const rdy=readyDT(v);
+  if(rdy){
+    const ci=toMin(state.settings.checkIn), rm=rdy.getHours()*60+rdy.getMinutes();
+    let s='Kambarys: įsiregistravimas nuo '+state.settings.checkIn;
+    if(rm<ci)s+=' – atvykus laukti ~'+fmtDur(ci-rm);
+    lines.push(s);
+  }
+  if(d){
+    const co=toMin(state.settings.checkOut), dm=d.getHours()*60+d.getMinutes();
+    let s='Išsiregistravimas iki '+state.settings.checkOut;
+    if(dm>co)s+=' – iki skrydžio '+fmtDur(dm-co)+' be kambario';
+    lines.push(s);
+  }
+  return lines.length?`<div class="logi-note">${lines.join('<br>')}</div>`:'';
+}
+
+function detailHtml(v){
+  return `
+  <div class="dsec"><h4>Bendra</h4>
+    <div class="field-row"><label>Pavadinimas</label><input type="text" data-f="name" value="${esc(v.name)}"></div>
+    <div class="field-row"><label>Naktys</label><input type="number" data-f="nights" value="${v.nights??''}" style="max-width:90px"></div>
+    <div class="field-row"><label>Nakvynės vieta</label><input type="text" data-f="lodgingName" value="${esc(v.lodgingName)}"></div>
+  </div>
+  <div class="dsec"><h4>Skrydžiai</h4>
+    ${legEdit(v,'outbound','Išvykimas')}
+    ${legEdit(v,'inbound','Grįžimas')}
+  </div>
+  <div class="dsec"><h4>Atvykimo logistika</h4>
+    <div class="field-row">
+      <label style="min-width:auto;display:flex;align-items:center;gap:6px"><input type="checkbox" data-f="checkedBag" ${v.checkedBag?'checked':''} style="min-width:auto;flex:none">Registruotas bagažas (auto anksčiausiai +1 val. po nusileidimo; be bagažo +30 min)</label>
+    </div>
+    <div class="field-row">
+      <label style="min-width:auto;display:flex;align-items:center;gap:6px"><input type="checkbox" data-f="airportNight.enabled" ${v.airportNight&&v.airportNight.enabled?'checked':''} style="min-width:auto;flex:none">Naktis viešbutyje prie oro uosto atvykus</label>
+      <input type="number" step="1" data-f="airportNight.value" value="${v.airportNight?(v.airportNight.value??''):''}" placeholder="kaina €" style="max-width:110px">
+    </div>
+    ${logisticsHtml(v)}
+  </div>
+  <div class="dsec"><h4>Kainos</h4>
+    ${moneyEdit(v,'flightPrice','Skrydžiai (viso)')}
+    ${moneyEdit(v,'lodging','Nakvynė (viso)')}
+    ${moneyEdit(v,'car','Auto nuoma')}
+    ${moneyEdit(v,'extras','Kita (keltai ir pan.)')}
+  </div>
+  <div class="dsec"><h4>Pastabos</h4>
+    <div class="field-row"><textarea data-f="notes" rows="2">${esc(v.notes)}</textarea></div>
+  </div>
+  <div class="detail-actions">
+    <button class="small" data-save="${v.id}">Išsaugoti</button>
+    <button class="small danger" data-del="${v.id}">Ištrinti variantą</button>
+  </div>`;
+}
+
+function bindDetail(){
+  document.querySelectorAll('[data-toggle]').forEach(el=>{
+    el.onclick=()=>{const id=el.dataset.toggle;openIds.has(id)?openIds.delete(id):openIds.add(id);render();};
+  });
+  document.querySelectorAll('[data-save]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();saveDetail(btn.dataset.save);};
+  });
+  document.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();
+      if(confirm('Tikrai ištrinti šį variantą?')){state.variants=state.variants.filter(v=>v.id!==btn.dataset.del);save();render();}};
+  });
+  document.querySelectorAll('.vdetail input,.vdetail textarea').forEach(inp=>{inp.onclick=e=>e.stopPropagation();});
+}
+
+function setPath(obj,path,val){
+  const parts=path.split('.');
+  let o=obj;
+  for(let i=0;i<parts.length-1;i++){if(!o[parts[i]])o[parts[i]]={};o=o[parts[i]];}
+  o[parts[parts.length-1]]=val;
+}
+
+function saveDetail(id){
+  const v=state.variants.find(x=>x.id===id);if(!v)return;
+  const card=document.querySelector(`.vcard[data-id="${id}"]`);
+  const before={};['flightPrice','lodging','car','extras'].forEach(k=>before[k]=v[k].value);
+  card.querySelectorAll('[data-f]').forEach(inp=>{
+    let val=inp.type==='checkbox'?inp.checked:inp.value;
+    if(inp.type==='number')val=val===''?null:Number(val);
+    setPath(v,inp.dataset.f,val);
+  });
+  ['flightPrice','lodging','car','extras'].forEach(k=>{
+    const m=v[k];const old=before[k];
+    if(old!=null&&old!==''&&m.value!=null&&Number(old)!==Number(m.value)){
+      m.history=m.history||[];
+      m.history.push({value:old,source:m.source,capturedAt:m.capturedAt||''});
+      m.capturedAt=today();
+    }
+    if(m.value!=null&&m.value!==''&&!m.capturedAt)m.capturedAt=today();
+  });
+  save();render();
+}
+
+/* ---------- import ---------- */
+function mergeMoney(target,incoming){
+  if(!incoming)return;
+  const nv=incoming.value;
+  if(nv==null||nv==='')return;
+  if(target.value!=null&&target.value!==''&&Number(target.value)!==Number(nv)){
+    target.history=target.history||[];
+    target.history.push({value:target.value,source:target.source,capturedAt:target.capturedAt||''});
+  }
+  target.value=Number(nv);
+  target.estimated=!!incoming.estimated;
+  if(incoming.source)target.source=incoming.source;
+  target.capturedAt=incoming.capturedAt||today();
+}
+function mergeLeg(target,inc){
+  if(!inc)return;
+  ['date','dep','arr','from','to','via','airline'].forEach(k=>{if(inc[k]!=null&&inc[k]!=='')target[k]=String(inc[k]);});
+}
+function importJSON(txt){
+  let data;
+  try{data=JSON.parse(txt);}catch(e){throw new Error('Netinkamas JSON: '+e.message);}
+  // pilna atsarginė kopija (visos kelionės)
+  if(data&&data.trips){
+    db=data;
+    if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
+    state=db.trips.find(t=>t.id===db.activeId)||db.trips[0];
+    db.activeId=state.id;
+    db.trips.forEach(t=>{t.settings=Object.assign(defaultSettings(),t.settings||{});(t.variants||[]).forEach(v=>{if(!v.airportNight)v.airportNight={enabled:false,value:null};if(v.checkedBag==null)v.checkedBag=false;});});
+    syncInputs();
+    return{restored:true};
+  }
+  const arr=data.variants||(Array.isArray(data)?data:[data]);
+  let added=0,updated=0;
+  arr.forEach(inc=>{
+    if(!inc||!inc.name)throw new Error('Kiekvienas variantas turi turėti "name".');
+    let v=state.variants.find(x=>x.name.trim().toLowerCase()===String(inc.name).trim().toLowerCase());
+    if(!v){v=newVariant(inc.name);state.variants.push(v);added++;}else{updated++;}
+    if(inc.capturedAt)v.capturedAt=inc.capturedAt;
+    if(inc.source)v.source=inc.source;
+    if(inc.nights!=null&&inc.nights!=='')v.nights=Number(inc.nights);
+    if(inc.lodgingName)v.lodgingName=inc.lodgingName;
+    if(inc.notes)v.notes=(v.notes?v.notes+'\n':'')+inc.notes;
+    if(inc.checkedBag!=null)v.checkedBag=!!inc.checkedBag;
+    if(inc.airportNight){
+      v.airportNight=v.airportNight||{enabled:false,value:null};
+      if(inc.airportNight.enabled!=null)v.airportNight.enabled=!!inc.airportNight.enabled;
+      if(inc.airportNight.value!=null)v.airportNight.value=Number(inc.airportNight.value);
+    }
+    mergeLeg(v.outbound,inc.outbound);
+    mergeLeg(v.inbound,inc.inbound);
+    ['flightPrice','lodging','car','extras'].forEach(k=>{
+      if(inc[k]){
+        if(inc[k].source==null&&inc.source)inc[k].source=inc.source;
+        if(inc[k].capturedAt==null&&inc.capturedAt)inc[k].capturedAt=inc.capturedAt;
+        mergeMoney(v[k],inc[k]);
+      }
+    });
+  });
+  return{added,updated};
+}
+
+/* ---------- UI wiring ---------- */
+document.getElementById('tripSel').onchange=e=>{
+  state=db.trips.find(t=>t.id===e.target.value)||db.trips[0];
+  db.activeId=state.id;
+  openIds=new Set();
+  syncInputs();render();save();
+};
+document.getElementById('btnNewTrip').onclick=()=>{
+  const t=newTrip();db.trips.push(t);state=t;db.activeId=t.id;
+  openIds=new Set();
+  syncInputs();render();save();
+  document.getElementById('tripName').focus();
+};
+document.getElementById('btnDelTrip').onclick=()=>{
+  if(!confirm('Ištrinti kelionę "'+state.tripName+'" su visais variantais?'))return;
+  db.trips=db.trips.filter(t=>t.id!==state.id);
+  if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
+  state=db.trips[0];db.activeId=state.id;
+  openIds=new Set();
+  syncInputs();render();save();
+};
+document.getElementById('btnAdd').onclick=()=>{
+  const v=newVariant();state.variants.push(v);openIds.add(v.id);save();render();
+  setTimeout(()=>document.querySelector(`.vcard[data-id="${v.id}"]`)?.scrollIntoView({behavior:'smooth'}),50);
+};
+document.getElementById('sortSel').onchange=render;
+document.getElementById('tripName').onchange=save;
+['rentOpen','rentClose','retBuf','checkIn','checkOut'].forEach(id=>{
+  document.getElementById(id).onchange=e=>{
+    state.settings[id]=id==='retBuf'?Number(e.target.value):e.target.value;
+    save();render();
+  };
+});
+
+const modal=document.getElementById('importModal');
+document.getElementById('btnImport').onclick=()=>{modal.classList.add('show');document.getElementById('importMsg').className='msg';document.getElementById('importTxt').value='';};
+document.getElementById('btnImpCancel').onclick=()=>modal.classList.remove('show');
+modal.onclick=e=>{if(e.target===modal)modal.classList.remove('show');};
+document.getElementById('btnImpOk').onclick=()=>{
+  const msg=document.getElementById('importMsg');
+  try{
+    const r=importJSON(document.getElementById('importTxt').value);
+    save();render();
+    msg.textContent=r.restored?'Atkurta atsarginė kopija (visos kelionės).':`Importuota: ${r.added} nauji, ${r.updated} atnaujinti.`;
+    msg.className='msg ok';
+    setTimeout(()=>modal.classList.remove('show'),900);
+  }catch(e){msg.textContent=e.message;msg.className='msg err';}
+};
+const expModal=document.getElementById('exportModal');
+document.getElementById('btnExport').onclick=()=>{
+  document.getElementById('exportTxt').value=JSON.stringify(db);
+  document.getElementById('exportMsg').className='msg';
+  expModal.classList.add('show');
+};
+document.getElementById('btnExpClose').onclick=()=>expModal.classList.remove('show');
+expModal.onclick=e=>{if(e.target===expModal)expModal.classList.remove('show');};
+document.getElementById('btnExpCopy').onclick=async()=>{
+  const ta=document.getElementById('exportTxt');
+  const msg=document.getElementById('exportMsg');
+  let ok=false;
+  try{await navigator.clipboard.writeText(ta.value);ok=true;}catch(e){
+    try{ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);ok=document.execCommand('copy');}catch(e2){}
+  }
+  if(ok){msg.textContent='Nukopijuota į iškarpinę.';msg.className='msg ok';}
+  else{msg.textContent='Automatinis kopijavimas nepavyko – pažymėk tekstą ranka ir kopijuok.';msg.className='msg err';ta.focus();ta.select();}
+};
+document.getElementById('btnSave').onclick=()=>{save();};
+
+load();
+</script>
+</body>
+</html>
