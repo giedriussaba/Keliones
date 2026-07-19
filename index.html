@@ -71,6 +71,8 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
 .paxrow{display:flex;align-items:center;gap:10px;padding:6px 14px 2px;font-family:var(--mono);font-size:12px;color:var(--ink-soft)}
 .paxrow b{font-size:14px;color:var(--ink);min-width:20px;text-align:center}
 .pax-btn{width:30px;height:30px;padding:0;border-radius:50%;font-size:17px;line-height:1;background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.pax-mini{width:26px;height:26px;padding:0;border-radius:50%;font-size:15px;line-height:1;background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.ast{color:var(--est);font-weight:700}
 /* risk badges */
 .risks{padding:6px 14px 4px;display:flex;gap:6px;flex-wrap:wrap;cursor:pointer}
 .rbadge{font-family:var(--mono);font-size:10.5px;padding:3px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:4px}
@@ -137,6 +139,7 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
   <select id="tripSel" aria-label="Kelionė" style="max-width:220px"></select>
   <button class="secondary small" id="btnNewTrip">+ Kelionė</button>
   <button class="danger small" id="btnDelTrip">Ištrinti kelionę</button>
+  <button class="secondary small" id="btnTrash">Šiukšliadėžė</button>
 </div>
 <div class="toolbar">
   <button id="btnAdd">+ Variantas</button>
@@ -173,6 +176,17 @@ main{max-width:960px;margin:0 auto;padding:0 16px}
 </div>
 
 <main id="list"></main>
+
+<div class="modal-bg" id="trashModal">
+  <div class="modal">
+    <h3>Šiukšliadėžė</h3>
+    <p>Ištrinti dalykai laikomi 30 dienų, po to pašalinami automatiškai.</p>
+    <div id="trashList"></div>
+    <div class="actions">
+      <button class="secondary" id="btnTrashClose">Uždaryti</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-bg" id="cloudModal">
   <div class="modal">
@@ -231,11 +245,14 @@ const uid=()=>'v'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function newMoney(){return{value:null,estimated:false,source:'',capturedAt:'',history:[]}}
+function newLodging(name){return{name:name||'',price:newMoney()}}
 function newVariant(name){return{id:uid(),name:name||'Naujas variantas',
   outbound:{date:'',dep:'',arr:'',from:'',to:'',via:'',airline:''},
   inbound:{date:'',dep:'',arr:'',from:'',to:'',via:'',airline:''},
   nights:null,lodgingName:'',pax:1,
   flightPrice:newMoney(),flightExtras:newMoney(),lodging:newMoney(),car:newMoney(),extras:newMoney(),
+  lodgings:[],
+  ryanair:{enabled:false,seatSel:true,seatPrice:null,cabinBags:0,cabinPrice:null,checkedBags:0,checkedPrice:null},
   airportNight:{enabled:false,value:null},
   checkedBag:false,
   notes:'',source:'',capturedAt:today()}}
@@ -283,13 +300,42 @@ function b64dec(b){return decodeURIComponent(escape(atob(String(b).replace(/\n/g
 function ghHeaders(cfg){const h={'Accept':'application/vnd.github+json'};if(cfg.token)h['Authorization']='Bearer '+cfg.token;return h;}
 function normalizeDb(){
   if(!db.trips)db.trips=[];
+  if(!db.trash)db.trash={trips:[],variants:[]};
+  if(!db.trash.trips)db.trash.trips=[];
+  if(!db.trash.variants)db.trash.variants=[];
+  purgeTrash();
   if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
   db.trips.forEach(t=>{
     t.settings=Object.assign(defaultSettings(),t.settings||{});
-    (t.variants||[]).forEach(v=>{if(!v.airportNight)v.airportNight={enabled:false,value:null};if(v.checkedBag==null)v.checkedBag=false;if(v.pax==null||v.pax<1)v.pax=1;if(!v.flightExtras)v.flightExtras=newMoney();});
+    (t.variants||[]).forEach(v=>{
+      if(!v.airportNight)v.airportNight={enabled:false,value:null};
+      if(v.checkedBag==null)v.checkedBag=false;
+      if(v.pax==null||v.pax<1)v.pax=1;
+      if(!v.flightExtras)v.flightExtras=newMoney();
+      if(!Array.isArray(v.lodgings))v.lodgings=[];
+      if(!v.ryanair)v.ryanair={enabled:false,seatSel:true,seatPrice:null,cabinBags:0,cabinPrice:null,checkedBags:0,checkedPrice:null};
+    });
   });
   state=db.trips.find(t=>t.id===db.activeId)||db.trips[0];
   db.activeId=state.id;
+}
+// pašalina iš šiukšliadėžės senesnius nei 30 d.
+function purgeTrash(){
+  const cutoff=Date.now()-30*86400000;
+  if(db.trash){
+    db.trash.trips=(db.trash.trips||[]).filter(x=>(x.deletedAt||0)>cutoff);
+    db.trash.variants=(db.trash.variants||[]).filter(x=>(x.deletedAt||0)>cutoff);
+  }
+}
+function trashDaysLeft(deletedAt){
+  return Math.max(0,Math.ceil((deletedAt+30*86400000-Date.now())/86400000));
+}
+// sudeda visų nakvynės vietų sumą (senasis lodging + lodgings masyvas)
+function lodgingTotal(v){
+  let sum=0,count=0,est=false,any=false;
+  if(v.lodging&&v.lodging.value!=null&&v.lodging.value!==''){sum+=Number(v.lodging.value);count++;any=true;if(v.lodging.estimated)est=true;}
+  (v.lodgings||[]).forEach(l=>{if(l.price&&l.price.value!=null&&l.price.value!==''){sum+=Number(l.price.value);count++;any=true;if(l.price.estimated)est=true;}});
+  return{sum,count,est,any};
 }
 async function cloudPull(){
   const cfg=syncCfg();
@@ -483,12 +529,28 @@ function carRental(v){
   return{pickup,ret,mins,billed:Math.ceil(mins/1440)};
 }
 
+function ryanairExtras(v){
+  const r=v.ryanair;
+  if(!r||!r.enabled)return null;
+  const pax=v.pax||1;
+  let sum=0;
+  if(r.seatSel&&r.seatPrice!=null&&r.seatPrice!=='')sum+=Number(r.seatPrice)*pax;
+  if(r.cabinBags>0&&r.cabinPrice!=null&&r.cabinPrice!=='')sum+=Number(r.cabinPrice)*Number(r.cabinBags);
+  if(r.checkedBags>0&&r.checkedPrice!=null&&r.checkedPrice!=='')sum+=Number(r.checkedPrice)*Number(r.checkedBags);
+  return sum;
+}
 function totalOf(v){
   let sum=0,needed=0,est=false;
   const pax=v.pax||1;
   if(v.flightPrice.value!=null&&v.flightPrice.value!==''){sum+=Number(v.flightPrice.value)*pax;if(v.flightPrice.estimated)est=true;}
   else needed++;
-  [['flightExtras',false],['lodging',true],['car',true],['extras',false]].forEach(([k,req])=>{
+  // skrydžio priedai: rankinis flightExtras + (jei įjungta) Ryanair paskaičiuoti
+  if(v.flightExtras.value!=null&&v.flightExtras.value!==''){sum+=Number(v.flightExtras.value);if(v.flightExtras.estimated)est=true;}
+  const rx=ryanairExtras(v); if(rx!=null)sum+=rx;
+  // nakvynė: visos vietos
+  const lt=lodgingTotal(v);
+  if(lt.any){sum+=lt.sum;if(lt.est)est=true;}else needed++;
+  [['car',true],['extras',false]].forEach(([k,req])=>{
     const m=v[k];
     if(m.value!=null&&m.value!==''){sum+=Number(m.value);if(m.estimated)est=true;}
     else if(req)needed++;
@@ -503,15 +565,28 @@ function totalOf(v){
 function flightCell(v){
   const m=v.flightPrice, fx=v.flightExtras, pax=v.pax||1;
   let val,subs=[];
+  const rx=ryanairExtras(v);
+  const extrasTotal=(fx.value!=null&&fx.value!==''?Number(fx.value):0)+(rx!=null?rx:0);
   if(m.value==null||m.value===''){val='<span class="slot-empty">&nbsp;</span>';}
   else{
-    const tot=Number(m.value)*pax+(fx.value!=null&&fx.value!==''?Number(fx.value):0);
+    const tot=Number(m.value)*pax+extrasTotal;
     val=(m.estimated||fx.estimated?'<span class="est-mark">~</span>':'')+fmt(tot)+' €';
     if(pax>1)subs.push(fmt(m.value)+' €/asm × '+pax);
-    if(fx.value!=null&&fx.value!=='')subs.push('su priedais '+fmt(fx.value)+' €');
+    if(extrasTotal>0)subs.push('su priedais '+fmt(extrasTotal)+' €');
   }
   if(m.capturedAt)subs.push(m.capturedAt);
   return `<div class="cell"><div class="lbl">Skrydžiai</div><div class="val">${val}</div>${subs.map(s=>`<div class="sub">${s}</div>`).join('')}</div>`;
+}
+// nakvynės langelis su suma ir žvaigždute jei kelios vietos
+function lodgingCell(v){
+  const lt=lodgingTotal(v);
+  let val,subs=[];
+  if(!lt.any){val='<span class="slot-empty">&nbsp;</span>';}
+  else{
+    val=(lt.est?'<span class="est-mark">~</span>':'')+fmt(lt.sum)+' €'+(lt.count>1?'<span class="ast">*</span>':'');
+    if(lt.count>1)subs.push('* '+lt.count+' vietos');
+  }
+  return `<div class="cell"><div class="lbl">Nakvynė</div><div class="val">${val}</div>${subs.map(s=>`<div class="sub">${s}</div>`).join('')}</div>`;
 }
 function moneyCell(v,key,lbl,extraSub){
   const m=v[key];
@@ -632,7 +707,7 @@ function render(){
         <div class="cell"><div class="lbl">Grįžimas</div><div class="val">${ib?ib.date:'<span class="slot-empty">&nbsp;</span>'}</div><div class="sub">${ib?[ib.route,ib.t].filter(Boolean).join(' '):''}</div></div>
         <div class="cell"><div class="lbl">Naktys</div><div class="val">${v.nights!=null&&v.nights!==''?v.nights:'<span class="slot-empty">&nbsp;</span>'}</div><div class="sub">įsireg. ${state.settings.checkIn} · išsireg. ${state.settings.checkOut}</div>${v.airportNight&&v.airportNight.enabled?'<div class="sub" style="color:var(--est)">+1 oro uoste</div>':''}</div>
         ${flightCell(v)}
-        ${moneyCell(v,'lodging','Nakvynė')}
+        ${lodgingCell(v)}
         ${moneyCell(v,'car','Auto',carSub)}
       </div>
       <div class="vdetail">${detailHtml(v)}</div>
@@ -701,13 +776,54 @@ function logisticsHtml(v){
   return lines.length?`<div class="logi-note">${lines.join('<br>')}</div>`:'';
 }
 
+function lodgingsEditHtml(v){
+  let rows='';
+  // senoji viena vieta -> rodom kaip pirmą
+  rows+=`<div class="field-row"><label>Nakvynė 1</label>
+    <input type="text" data-f="lodgingName" value="${esc(v.lodgingName)}" placeholder="pavadinimas" style="max-width:150px">
+    <input type="number" step="1" data-f="lodging.value" value="${v.lodging.value??''}" placeholder="€" style="max-width:90px">
+    <label style="min-width:auto;display:flex;align-items:center;gap:4px;font-size:11px"><input type="checkbox" data-f="lodging.estimated" ${v.lodging.estimated?'checked':''} style="min-width:auto;flex:none">spėj.</label>
+  </div>`;
+  (v.lodgings||[]).forEach((l,i)=>{
+    rows+=`<div class="field-row"><label>Nakvynė ${i+2}</label>
+      <input type="text" data-lg="${i}.name" value="${esc(l.name)}" placeholder="pavadinimas" style="max-width:150px">
+      <input type="number" step="1" data-lg="${i}.price" value="${l.price&&l.price.value!=null?l.price.value:''}" placeholder="€" style="max-width:90px">
+      <button class="small danger" data-lgdel="${i}" style="padding:4px 8px">×</button>
+    </div>`;
+  });
+  const lt=lodgingTotal(v);
+  rows+=`<div class="field-row"><button class="small" data-lgadd="${v.id}">+ nakvynės vieta</button>${lt.count>1?`<span style="font-family:var(--mono);font-size:12px;color:var(--ink-soft)">viso ${fmt(lt.sum)} € · ${lt.count} vietos</span>`:''}</div>`;
+  return rows;
+}
+function ryanairHtml(v){
+  const r=v.ryanair||{};
+  return `
+  <div class="field-row">
+    <label style="min-width:auto;display:flex;align-items:center;gap:6px"><input type="checkbox" data-f="ryanair.enabled" ${r.enabled?'checked':''} style="min-width:auto;flex:none"><b>Ryanair priedai (skaičiuoti atskirai)</b></label>
+  </div>
+  <div class="field-row">
+    <label style="min-width:auto;display:flex;align-items:center;gap:6px"><input type="checkbox" data-f="ryanair.seatSel" ${r.seatSel?'checked':''} style="min-width:auto;flex:none">Vietų pasirinkimas</label>
+    <input type="number" step="0.5" data-f="ryanair.seatPrice" value="${r.seatPrice??''}" placeholder="€/asm" style="max-width:100px">
+    <span style="font-size:11px;color:var(--ink-soft)">× ${v.pax||1} asm.</span>
+  </div>
+  <div class="field-row">
+    <label>10kg rankinis</label>
+    <button class="small pax-mini" data-rdec="cabinBags">−</button><b style="min-width:18px;text-align:center;display:inline-block">${r.cabinBags||0}</b><button class="small pax-mini" data-rinc="cabinBags">+</button>
+    <input type="number" step="0.5" data-f="ryanair.cabinPrice" value="${r.cabinPrice??''}" placeholder="€/vnt" style="max-width:100px">
+  </div>
+  <div class="field-row">
+    <label>20kg registruotas</label>
+    <button class="small pax-mini" data-rdec="checkedBags">−</button><b style="min-width:18px;text-align:center;display:inline-block">${r.checkedBags||0}</b><button class="small pax-mini" data-rinc="checkedBags">+</button>
+    <input type="number" step="0.5" data-f="ryanair.checkedPrice" value="${r.checkedPrice??''}" placeholder="€/vnt" style="max-width:100px">
+  </div>
+  ${r.enabled?`<div class="logi-note">Ryanair priedai viso: <b>${fmt(ryanairExtras(v)||0)} €</b> (vietos ${r.seatSel?fmt((r.seatPrice||0)*(v.pax||1)):0} + rankinis ${fmt((r.cabinPrice||0)*(r.cabinBags||0))} + registr. ${fmt((r.checkedPrice||0)*(r.checkedBags||0))})</div>`:''}`;
+}
 function detailHtml(v){
   return `
   <div class="dsec"><h4>Bendra</h4>
     <div class="field-row"><label>Pavadinimas</label><input type="text" data-f="name" value="${esc(v.name)}"></div>
     <div class="field-row"><label>Žmonių skaičius</label><input type="number" min="1" max="20" data-f="pax" value="${v.pax||1}" style="max-width:90px"></div>
     <div class="field-row"><label>Naktys</label><input type="number" data-f="nights" value="${v.nights??''}" style="max-width:90px"></div>
-    <div class="field-row"><label>Nakvynės vieta</label><input type="text" data-f="lodgingName" value="${esc(v.lodgingName)}"></div>
   </div>
   <div class="dsec"><h4>Skrydžiai</h4>
     ${legEdit(v,'outbound','Išvykimas')}
@@ -723,10 +839,17 @@ function detailHtml(v){
     </div>
     ${logisticsHtml(v)}
   </div>
-  <div class="dsec"><h4>Kainos</h4>
-    ${moneyEdit(v,'flightPrice','Skrydžiai (1 asm.)')}
-    ${moneyEdit(v,'flightExtras','Skrydžio priedai: vietos, bagažas (viso)')}
-    ${moneyEdit(v,'lodging','Nakvynė (viso)')}
+  <div class="dsec"><h4>Skrydžio kaina</h4>
+    ${moneyEdit(v,'flightPrice','Bilietas (1 asm.)')}
+    ${moneyEdit(v,'flightExtras','Priedai bendra suma (jei nenaudoji Ryanair skaičiuoklės žemiau)')}
+  </div>
+  <div class="dsec"><h4>Ryanair priedai</h4>
+    ${ryanairHtml(v)}
+  </div>
+  <div class="dsec"><h4>Nakvynė</h4>
+    ${lodgingsEditHtml(v)}
+  </div>
+  <div class="dsec"><h4>Kitos kainos</h4>
     ${moneyEdit(v,'car','Auto nuoma')}
     ${moneyEdit(v,'extras','Kita (keltai ir pan.)')}
   </div>
@@ -746,6 +869,19 @@ function bindDetail(){
   document.querySelectorAll('[data-paxdec]').forEach(btn=>{
     btn.onclick=e=>{e.stopPropagation();const v=state.variants.find(x=>x.id===btn.dataset.paxdec);if(v){v.pax=Math.max(1,(v.pax||1)-1);save();render();}};
   });
+  // Ryanair bagažų skaitikliai (išsaugo formos būseną prieš perpiešiant)
+  document.querySelectorAll('[data-rinc]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();const card=btn.closest('.vcard');const v=state.variants.find(x=>x.id===card.dataset.id);collectForm(v,card);v.ryanair[btn.dataset.rinc]=(Number(v.ryanair[btn.dataset.rinc])||0)+1;save();render();};
+  });
+  document.querySelectorAll('[data-rdec]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();const card=btn.closest('.vcard');const v=state.variants.find(x=>x.id===card.dataset.id);collectForm(v,card);v.ryanair[btn.dataset.rdec]=Math.max(0,(Number(v.ryanair[btn.dataset.rdec])||0)-1);save();render();};
+  });
+  document.querySelectorAll('[data-lgadd]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();const card=btn.closest('.vcard');const v=state.variants.find(x=>x.id===card.dataset.id);collectForm(v,card);v.lodgings.push(newLodging());save();render();};
+  });
+  document.querySelectorAll('[data-lgdel]').forEach(btn=>{
+    btn.onclick=e=>{e.stopPropagation();const card=btn.closest('.vcard');const v=state.variants.find(x=>x.id===card.dataset.id);collectForm(v,card);v.lodgings.splice(Number(btn.dataset.lgdel),1);save();render();};
+  });
   document.querySelectorAll('[data-toggle]').forEach(el=>{
     el.onclick=()=>{const id=el.dataset.toggle;openIds.has(id)?openIds.delete(id):openIds.add(id);render();};
   });
@@ -754,9 +890,30 @@ function bindDetail(){
   });
   document.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick=e=>{e.stopPropagation();
-      if(confirm('Tikrai ištrinti šį variantą?')){state.variants=state.variants.filter(v=>v.id!==btn.dataset.del);save();render();}};
+      const v=state.variants.find(x=>x.id===btn.dataset.del);
+      if(!v)return;
+      if(confirm('Ištrinti variantą "'+v.name+'"?\n\nJis bus perkeltas į šiukšliadėžę ir laikomas 30 dienų – galėsi atkurti.')){
+        db.trash.variants.push({tripId:state.id,deletedAt:Date.now(),data:v});
+        state.variants=state.variants.filter(x=>x.id!==btn.dataset.del);
+        save();render();
+      }};
   });
   document.querySelectorAll('.vdetail input,.vdetail textarea').forEach(inp=>{inp.onclick=e=>e.stopPropagation();});
+}
+// nuskaito formos laukus į variantą (nesaugo, nepiešia) – naudojama prieš +/- veiksmus
+function collectForm(v,card){
+  if(!card)return;
+  card.querySelectorAll('[data-f]').forEach(inp=>{
+    let val=inp.type==='checkbox'?inp.checked:inp.value;
+    if(inp.type==='number')val=val===''?null:Number(val);
+    setPath(v,inp.dataset.f,val);
+  });
+  card.querySelectorAll('[data-lg]').forEach(inp=>{
+    const[idx,field]=inp.dataset.lg.split('.');
+    const l=v.lodgings[Number(idx)];if(!l)return;
+    if(field==='name')l.name=inp.value;
+    else if(field==='price')l.price.value=inp.value===''?null:Number(inp.value);
+  });
 }
 
 function setPath(obj,path,val){
@@ -774,6 +931,12 @@ function saveDetail(id){
     let val=inp.type==='checkbox'?inp.checked:inp.value;
     if(inp.type==='number')val=val===''?null:Number(val);
     setPath(v,inp.dataset.f,val);
+  });
+  card.querySelectorAll('[data-lg]').forEach(inp=>{
+    const[idx,field]=inp.dataset.lg.split('.');
+    const l=v.lodgings[Number(idx)];if(!l)return;
+    if(field==='name')l.name=inp.value;
+    else if(field==='price')l.price.value=inp.value===''?null:Number(inp.value);
   });
   ['flightPrice','flightExtras','lodging','car','extras'].forEach(k=>{
     const m=v[k];const old=before[k];
@@ -829,6 +992,20 @@ function importJSON(txt){
     if(inc.notes)v.notes=(v.notes?v.notes+'\n':'')+inc.notes;
     if(inc.checkedBag!=null)v.checkedBag=!!inc.checkedBag;
     if(inc.pax!=null&&inc.pax>=1)v.pax=Number(inc.pax);
+    if(Array.isArray(inc.lodgings)){
+      inc.lodgings.forEach(l=>{const nl=newLodging(l.name);if(l.value!=null)nl.price.value=Number(l.value);v.lodgings.push(nl);});
+    }
+    if(inc.ryanair){
+      v.ryanair=Object.assign(v.ryanair||{},{
+        enabled:inc.ryanair.enabled!=null?!!inc.ryanair.enabled:v.ryanair.enabled,
+        seatSel:inc.ryanair.seatSel!=null?!!inc.ryanair.seatSel:v.ryanair.seatSel,
+        seatPrice:inc.ryanair.seatPrice!=null?Number(inc.ryanair.seatPrice):v.ryanair.seatPrice,
+        cabinBags:inc.ryanair.cabinBags!=null?Number(inc.ryanair.cabinBags):v.ryanair.cabinBags,
+        cabinPrice:inc.ryanair.cabinPrice!=null?Number(inc.ryanair.cabinPrice):v.ryanair.cabinPrice,
+        checkedBags:inc.ryanair.checkedBags!=null?Number(inc.ryanair.checkedBags):v.ryanair.checkedBags,
+        checkedPrice:inc.ryanair.checkedPrice!=null?Number(inc.ryanair.checkedPrice):v.ryanair.checkedPrice
+      });
+    }
     if(inc.airportNight){
       v.airportNight=v.airportNight||{enabled:false,value:null};
       if(inc.airportNight.enabled!=null)v.airportNight.enabled=!!inc.airportNight.enabled;
@@ -861,7 +1038,8 @@ document.getElementById('btnNewTrip').onclick=()=>{
   document.getElementById('tripName').focus();
 };
 document.getElementById('btnDelTrip').onclick=()=>{
-  if(!confirm('Ištrinti kelionę "'+state.tripName+'" su visais variantais?'))return;
+  if(!confirm('Ištrinti kelionę "'+state.tripName+'" su visais variantais?\n\nJi bus perkelta į šiukšliadėžę ir laikoma 30 dienų – galėsi atkurti.'))return;
+  db.trash.trips.push({deletedAt:Date.now(),data:state});
   db.trips=db.trips.filter(t=>t.id!==state.id);
   if(!db.trips.length)db.trips.push(newTrip('Kelionės variantai'));
   state=db.trips[0];db.activeId=state.id;
@@ -895,6 +1073,47 @@ document.getElementById('btnImpOk').onclick=()=>{
     setTimeout(()=>modal.classList.remove('show'),900);
   }catch(e){msg.textContent=e.message;msg.className='msg err';}
 };
+const trashModal=document.getElementById('trashModal');
+function renderTrash(){
+  purgeTrash();
+  const box=document.getElementById('trashList');
+  const tv=db.trash.trips||[], vv=db.trash.variants||[];
+  if(!tv.length&&!vv.length){box.innerHTML='<p style="color:var(--ink-soft)">Tuščia.</p>';return;}
+  let h='';
+  if(tv.length){
+    h+='<h4 style="font-family:var(--disp);font-size:12px;text-transform:uppercase;color:var(--ink-soft);margin:8px 0 4px">Kelionės</h4>';
+    tv.forEach((x,i)=>{
+      h+=`<div class="field-row" style="justify-content:space-between"><span style="font-family:var(--mono);font-size:12px">${esc(x.data.tripName)} <span style="color:var(--ink-soft)">(${(x.data.variants||[]).length} var. · liko ${trashDaysLeft(x.deletedAt)} d.)</span></span>
+        <span><button class="small" data-trestore="${i}">Atkurti</button> <button class="small danger" data-tpurge="${i}">×</button></span></div>`;
+    });
+  }
+  if(vv.length){
+    h+='<h4 style="font-family:var(--disp);font-size:12px;text-transform:uppercase;color:var(--ink-soft);margin:12px 0 4px">Variantai</h4>';
+    vv.forEach((x,i)=>{
+      const tripName=(db.trips.find(t=>t.id===x.tripId)||{}).tripName||'ištrinta kelionė';
+      h+=`<div class="field-row" style="justify-content:space-between"><span style="font-family:var(--mono);font-size:12px">${esc(x.data.name)} <span style="color:var(--ink-soft)">(${esc(tripName)} · liko ${trashDaysLeft(x.deletedAt)} d.)</span></span>
+        <span><button class="small" data-vrestore="${i}">Atkurti</button> <button class="small danger" data-vpurge="${i}">×</button></span></div>`;
+    });
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('[data-trestore]').forEach(b=>b.onclick=()=>{
+    const x=db.trash.trips.splice(Number(b.dataset.trestore),1)[0];
+    if(db.trips.some(t=>t.id===x.data.id))x.data.id='t'+Date.now().toString(36);
+    db.trips.push(x.data);normalizeDb();save();renderTrash();renderTripSel();
+  });
+  box.querySelectorAll('[data-vrestore]').forEach(b=>b.onclick=()=>{
+    const x=db.trash.variants.splice(Number(b.dataset.vrestore),1)[0];
+    let t=db.trips.find(t=>t.id===x.tripId)||state;
+    if(t.variants.some(vr=>vr.id===x.data.id))x.data.id=uid();
+    t.variants.push(x.data);save();render();renderTrash();
+  });
+  box.querySelectorAll('[data-tpurge]').forEach(b=>b.onclick=()=>{if(confirm('Galutinai pašalinti? Neatkursi.')){db.trash.trips.splice(Number(b.dataset.tpurge),1);save();renderTrash();}});
+  box.querySelectorAll('[data-vpurge]').forEach(b=>b.onclick=()=>{if(confirm('Galutinai pašalinti? Neatkursi.')){db.trash.variants.splice(Number(b.dataset.vpurge),1);save();renderTrash();}});
+}
+document.getElementById('btnTrash').onclick=()=>{renderTrash();trashModal.classList.add('show');};
+document.getElementById('btnTrashClose').onclick=()=>trashModal.classList.remove('show');
+trashModal.onclick=e=>{if(e.target===trashModal)trashModal.classList.remove('show');};
+
 const cloudModal=document.getElementById('cloudModal');
 document.getElementById('btnCloud').onclick=()=>{
   const cfg=syncCfg();
